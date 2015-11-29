@@ -246,7 +246,7 @@ INT32 CACHE_REPLACEMENT_STATE::Get_My_Victim( UINT32 setIndex )
 	// return first way always
 
     LINE_REPLACEMENT_STATE *replSet = repl[setIndex];
-    INT32 myWay = 0;
+    INT32 myWay = -1;
     for (UINT32 way=0; way<assoc; way++) {
         if (replSet[way].dead == true) {
             myWay = way;
@@ -406,7 +406,7 @@ INT32 samplerCache::GetMyVictim( UINT32 samplerSetIndex )
 	// return first way always
 
     LINE_REPLACEMENT_STATE *replSamplerSet = replSampler[samplerSetIndex];
-    INT32 mySamplerWay = 0;
+    INT32 mySamplerWay = -1;
     for (UINT32 way=0; way<SAMPLER_ASSOC; way++) {
         if (replSamplerSet[way].dead == true) {
             mySamplerWay = way;
@@ -421,7 +421,7 @@ INT32 samplerCache::GetMyVictim( UINT32 samplerSetIndex )
 // Get the victim block in sampler cache
 
 
-INT32 samplerCache::GetVictimInSamplerSet(UINT32 samplerSetIndex, const samplerBlock *vicSamplerSet, UINT32 samplerAssoc, Addr_t PC, Addr_t paddr, UINT32 accessType, bool dead)
+INT32 samplerCache::GetVictimInSamplerSet(UINT32 samplerSetIndex, const samplerBlock *vicSamplerSet,INT32 victimBlock, UINT32 samplerAssoc, Addr_t PC, Addr_t paddr, UINT32 accessType, bool dead)
 {
 
     Addr_t tag;
@@ -436,7 +436,8 @@ INT32 samplerCache::GetVictimInSamplerSet(UINT32 samplerSetIndex, const samplerB
     }
     if (vicSamplerSet->valid == false)
     {
-        for (int way = 0; way<SAMPLER_ASSOC; way++)
+        int way;
+        for (way = 0; way<SAMPLER_ASSOC; way++)
         {
             if (vicSamplerSet[way].valid == 0)
             {
@@ -444,6 +445,7 @@ INT32 samplerCache::GetVictimInSamplerSet(UINT32 samplerSetIndex, const samplerB
             }
         }
         victimBlock = way;
+        return victimBlock;
     }
     else
     {
@@ -493,28 +495,27 @@ void samplerCache::UpdateSamplerLRU( UINT32 samplerSetIndex, INT32 updateWayID )
 
 // Update my sampler dead-block prediction replacement
 
-void samplerCache::UpdateMyPolicy(UINT32 samplerSetIndex, INT32 updateWayID )
+void samplerCache::UpdateMyPolicy(UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID )
 { 
-    if (replSampler[samplerSetIndex][updateWayID].dead == true)
+    Addr_t PC = 0;
+    GetSamplerSetIndex(setIndex);
+    int way;
+    for (way=0; way<SAMPLER_ASSOC; way++)
     {
-        Addr_t PC = samplerSets[samplerSetIndex][updateWayID].PC;
-          
-        myPredictor::predictorResult(PC);
-        for (int i=0; i<PREDICTOR_NUM; i++)
+        if (samplerSets[samplerSetIndex][way].dead == true)
         {
-            table[predictorEntry[i]][i]++;
+            PC = samplerSets[samplerSetIndex][way].PC;
         }
-
-
     }
-    	
+
+      	
 }
 
 
 
 // Update sampler replacement
 
-void samplerCache::UpdateSamplerReplacementState(UINT32 samplerSetIndex, INT32 updateWayID, const samplerBlock *currBlock, Addr_t PC, UINT32 accessType, bool cacheHit, bool dead)
+void samplerCache::UpdateSamplerReplacementState(UINT32 samplerSetIndex, INT32 updateWayID, UINT32 setIndex, const samplerBlock *currBlock, Addr_t PC, UINT32 accessType, bool cacheHit, bool dead)
 {
 
 if (replPolicy == CRC_REPL_LRU)
@@ -527,7 +528,7 @@ else if (replPolicy == CRC_REPL_RANDOM)
 }
 else if (replPolicy == CRC_REPL_CONTESTANT)
 {
-    UpdateMyPolicy(samplerSetIndex, updateWayID);
+    UpdateMyPolicy(setIndex, samplerSetIndex, updateWayID);
 }
 
 
@@ -588,13 +589,13 @@ INT32 myPredictor::predictorResult(Addr_t PC)
 
     for (int i=0; i<PREDICTOR_NUM; i++)
     {
-        predictorEntry[i] = PC % hash[i];
-        table[predictorEntry[i]][i] ++;
-        if (table[predictorEntry[i]][i] > 3)
-            table[predictorEntry[i]][i] = 3;
-        if (table[predictorEntry[i]][i] < 0)
-            table[predictorEntry[i]][i] = 0;
-        counterSum = counterSum + table[predictorEntry[i]][i];
+        predictorEntry = PC % hash[i];
+        table[predictorEntry][i] ++;
+        if (table[predictorEntry][i] > 3)
+            table[predictorEntry][i] = 3;
+        if (table[predictorEntry][i] < 0)
+            table[predictorEntry][i] = 0;
+        counterSum = counterSum + table[predictorEntry][i];
     }
 
     return counterSum;

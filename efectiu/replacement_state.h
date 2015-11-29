@@ -150,10 +150,8 @@ struct samplerSet
 struct samplerCache
 {
 
-    //samplerBlock **samplerSets;
-
     samplerSet *samplerSets;  
-    LINE_REPLACEMENT_STATE **repl;
+
     LINE_REPLACEMENT_STATE **replSampler;
     const samplerBlock *vicSamplerSet;
     INT32 victimBlock;
@@ -173,18 +171,18 @@ struct samplerCache
             misses = 0;
             accesses = 0;
             replPolicy = -1;
-            repl = NULL;
+            replSampler = NULL;
         }
 
     INT32 GetSamplerSetIndex(UINT32 setIndex);
 
-    INT32 GetVictimInSamplerSet(UINT32 samplerSetIndex, const samplerBlock *vicSamplerSet, UINT32 samplerAssoc, Addr_t PC, Addr_t paddr, UINT32 accessType, bool dead);
+    INT32 GetVictimInSamplerSet(UINT32 samplerSetIndex, const samplerBlock *vicSamplerSet, INT32 victimBlock, UINT32 samplerAssoc, Addr_t PC, Addr_t paddr, UINT32 accessType, bool dead);
 
     void SetSamplerReplacementPolicy(UINT32 _pol) {replPolicy = _pol;}
 
     void   IncrementTimer() { mytimer++;}
 
-    void UpdateSamplerReplacementState(UINT32 samplerSetIndex, INT32 updateWayID, const samplerBlock *currBlock, Addr_t PC, UINT32 accessType, bool cacheHit, bool dead);
+    void UpdateSamplerReplacementState(UINT32 samplerSetIndex, INT32 updateWayID, UINT32 setIndex, const samplerBlock *currBlock, Addr_t PC, UINT32 accessType, bool cacheHit, bool dead);
 
  
  
@@ -200,7 +198,7 @@ struct samplerCache
 
     void UpdateSamplerLRU(UINT32 samplerSetIndex, INT32 updateWayID);
 
-    void UpdateMyPolicy(UINT32 samplerSetIndex, INT32 updateWayID);
+    void UpdateMyPolicy(UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID);
 
 
 };
