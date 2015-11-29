@@ -1,0 +1,9 @@
+opened "/home/faculty/djimenez/traces/403.gcc-16B.trace.gz"
+DAN_POLICY=0
+LLC 4194304 bytes, 16 assoc
+icount = 100000000, cycles = 100000000
+icount = 200000010, cycles = 200000010
+icount = 300000032, cycles = 300000032
+icount = 400000091, cycles = 400000091
+stopped warming at thread 0 with 500000077 instructions...
+icount = 500000157, cycles = 500000135
