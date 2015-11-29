@@ -40,6 +40,7 @@
 using namespace std;
 
 // Replacement Policies Supported
+
 typedef enum 
 {
     CRC_REPL_LRU        = 0,
@@ -48,6 +49,7 @@ typedef enum
 } ReplacemntPolicy;
 
 // Replacement State Per Cache Line
+
 typedef struct
 {
     UINT32  LRUstackposition;
@@ -56,56 +58,6 @@ typedef struct
     // CONTESTANTS: Add extra state per cache line here
 
 } LINE_REPLACEMENT_STATE;
-
-// The implementation for the cache replacement policy
-class CACHE_REPLACEMENT_STATE
-{
-  public:
-    LINE_REPLACEMENT_STATE   **repl;
-    LINE_REPLACEMENT_STATE   **replSampler;
-
-  private:
-
-    UINT32 numsets;
-    UINT32 assoc;
-    UINT32 replPolicy;
-    UINT32 samplerReplPolicy;
-
-
-    COUNTER mytimer;  // tracks # of references to the cache
-
-    // CONTESTANTS:  Add extra state for cache here
-    bool dead;
-
-  public:
-    ostream & PrintStats(ostream &out);
-
-    // The constructor CAN NOT be changed
-    CACHE_REPLACEMENT_STATE( UINT32 _sets, UINT32 _assoc, UINT32 _pol );
-
-    INT32 GetVictimInSet( UINT32 tid, UINT32 setIndex, const LINE_STATE *vicSet, UINT32 assoc, Addr_t PC, Addr_t paddr, UINT32 accessType );
-
-    void   SetReplacementPolicy( UINT32 _pol ) { replPolicy = _pol; }
-void   SetSamplerReplacementPolicy( UINT32 _pol ) { samplerReplPolicy = _pol; } 
-
-    void   IncrementTimer() { mytimer++; } 
-
-    void   UpdateReplacementState( UINT32 setIndex, INT32 updateWayID, const LINE_STATE *currLine, 
-                                   UINT32 tid, Addr_t PC, UINT32 accessType, bool cacheHit );
-
-   bool IsPassby(Addr_t PC);
-
-    ~CACHE_REPLACEMENT_STATE(void);
-
-  private:
-    
-    void   InitReplacementState(); 
-    INT32  Get_Random_Victim( UINT32 setIndex ); 
-    INT32  Get_LRU_Victim( UINT32 setIndex );  
-    INT32  Get_My_Victim( UINT32 setIndex ); 
-    void   UpdateLRU( UINT32 setIndex, INT32 updateWayID ); 
-    void   UpdateMyPolicy( UINT32 setIndex, INT32 updateWayID ); 
-};
 
 // Sampler block state
 
@@ -145,71 +97,74 @@ struct samplerSet
         }
 };
 
-// Sampler cache state
 
-struct samplerCache
+
+// The implementation for the cache replacement policy
+
+class CACHE_REPLACEMENT_STATE
 {
+public:
+    LINE_REPLACEMENT_STATE   **repl;
+
+
+private:
+
+    UINT32 numsets;
+    UINT32 assoc;
+    UINT32 replPolicy;
+    UINT32 samplerReplPolicy;
+
+
+    COUNTER mytimer;  // tracks # of references to the cache
+
+    // CONTESTANTS:  Add extra state for cache here
+    bool dead;
+
+public:
+    ostream & PrintStats(ostream &out);
+
+    // The constructor CAN NOT be changed
+    CACHE_REPLACEMENT_STATE( UINT32 _sets, UINT32 _assoc, UINT32 _pol );
+
+    INT32 GetVictimInSet( UINT32 tid, UINT32 setIndex, const LINE_STATE *vicSet, UINT32 assoc, Addr_t PC, Addr_t paddr, UINT32 accessType );
+
+    void   SetReplacementPolicy( UINT32 _pol ) { replPolicy = _pol; }
+
+    void   IncrementTimer() { mytimer++; } 
+
+    void   UpdateReplacementState( UINT32 setIndex, INT32 updateWayID, const LINE_STATE *currLine, 
+                                   UINT32 tid, Addr_t PC, UINT32 accessType, bool cacheHit );
+
+    bool IsPassby(Addr_t PC);
+
+  
+
+private:
+    
+    void   InitReplacementState(); 
+    INT32  Get_Random_Victim( UINT32 setIndex ); 
+    INT32  Get_LRU_Victim( UINT32 setIndex );  
+    INT32  Get_My_Victim( UINT32 setIndex ); 
+    void   UpdateLRU( UINT32 setIndex, INT32 updateWayID ); 
+    void   UpdateMyPolicy( UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID );
+
+public:
 
     samplerSet *samplerSets;  
 
     LINE_REPLACEMENT_STATE **replSampler;
-    const samplerBlock *vicSamplerSet;
-    INT32 victimBlock;
 
+    //  const samplerBlock *vicSamplerSet;
+
+    const LINE_STATE *vicSamplerSet;
+    INT32 victimBlock;
     UINT32 samplerNumsets;
     UINT32 samplerSetIndex;
     UINT32 samplerAssoc;
-    UINT32 replPolicy;
     bool isSampled;
     unsigned long long misses, accesses;
-    COUNTER mytimer;
 
-
-    // The constructor
-    samplerCache(UINT32 samplerNumsets, UINT32 samplerAssoc, UINT32 _pol)
-        {
-            misses = 0;
-            accesses = 0;
-            replPolicy = -1;
-            replSampler = NULL;
-        }
-
-    INT32 GetSamplerSetIndex(UINT32 setIndex);
-
-    INT32 GetVictimInSamplerSet(UINT32 samplerSetIndex, const samplerBlock *vicSamplerSet, INT32 victimBlock, UINT32 samplerAssoc, Addr_t PC, Addr_t paddr, UINT32 accessType, bool dead);
-
-    void SetSamplerReplacementPolicy(UINT32 _pol) {replPolicy = _pol;}
-
-    void   IncrementTimer() { mytimer++;}
-
-    void UpdateSamplerReplacementState(UINT32 samplerSetIndex, INT32 updateWayID, UINT32 setIndex, const samplerBlock *currBlock, Addr_t PC, UINT32 accessType, bool cacheHit, bool dead);
-
- 
- 
-    bool IsSamplerHit(UINT32 setIndex, UINT32 samplerSetIndex);
-
-    ~samplerCache(void);
-
-    void InitSamplerCache();
-
-    INT32 GetRandomVictim(UINT32 samplerSetIndex);
-    INT32 GetLruVictim(UINT32 samplerSetIndex);
-    INT32 GetMyVictim(UINT32 samplerSetIndex);
-
-    void UpdateSamplerLRU(UINT32 samplerSetIndex, INT32 updateWayID);
-
-    void UpdateMyPolicy(UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID);
-
-
-};
- // Jimenez's structures
-
-
-// Predictor table
-
-class myPredictor
-{
-public:
+    // Predictor table
 
     Addr_t PC;
     int predictorEntry;
@@ -217,7 +172,7 @@ public:
 
     int **table;
 
-    // Initialize my predictor
+    // Predictor function
   
     void InitMyPredictor();
 
@@ -227,7 +182,32 @@ public:
     void CounterDecrease(Addr_t PC);
     void CounterIncrease(Addr_t PC);
 
+    // sampler function
+
+    INT32 GetSamplerSetIndex(UINT32 setIndex);
+
+    INT32 GetVictimInSamplerSet(UINT32 samplerSetIndex, const LINE_STATE *vicSamplerSet,  UINT32 samplerAssoc, Addr_t PC, Addr_t paddr, UINT32 accessType, bool dead);
+
+    void SetSamplerReplacementPolicy(UINT32 _pol) {replPolicy = _pol;}
+
+    void UpdateSamplerReplacementState(UINT32 samplerSetIndex, INT32 updateWayID, UINT32 setIndex, const LINE_STATE *currBlock, Addr_t PC, UINT32 accessType, bool cacheHit, bool dead);
+ 
+    bool IsSamplerHit(UINT32 setIndex, UINT32 samplerSetIndex);
+
+    void InitSamplerSets();
+
+    INT32 GetSamplerRandomVictim(UINT32 samplerSetIndex);
+    INT32 GetSamplerLruVictim(UINT32 samplerSetIndex);
+    INT32 GetSamplerMyVictim(UINT32 samplerSetIndex);
+
+    void UpdateSamplerLRU(UINT32 samplerSetIndex, INT32 updateWayID);
+
+    //void UpdateMySamplerPolicy(UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID);
+ 
+    ~CACHE_REPLACEMENT_STATE(void);
 };
+
+
 
 
 
