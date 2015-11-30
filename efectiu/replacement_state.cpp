@@ -160,8 +160,6 @@ void CACHE_REPLACEMENT_STATE::InitReplacementState()
             ((samplerSets[i].samplerBlocks)[j]).tag = 0;
         }
     }
-
-    // My predictor function, use to predict the dead block information, one extra bit
 }
 
 
@@ -173,7 +171,37 @@ void CACHE_REPLACEMENT_STATE::InitReplacementState()
 // index for the line being replaced.                                         //
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
-INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, const LINE_STATE *vicSet, UINT32 assoc, Addr_t PC, Addr_t paddr, UINT32 accessType ) {
+
+INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, const LINE_STATE *vicSet, UINT32 assoc, Addr_t PC, Addr_t paddr, UINT32 accessType )
+{
+
+    UINT32 victim;
+    UINT32 i, j;
+    Addr_t tag;  // how to initilize the tag value???
+
+    for (j=0; j<assoc; j++)
+    {
+        if (vicSet[j].tag == tag)
+        {
+            return 0;  // sampler cache hit
+        }
+    }
+    if (sets[setIndex].valid == false)
+    {
+        for (i=0; i<assoc; i++)
+        {
+            if ((sets[setIndex].blocks)[i].valid == false)
+            {
+                victim = i;
+                break;
+            }
+        }
+        if (i == assoc)
+        {
+            sets[setIndex].valid = true;
+        }
+    }
+
     // If no invalid lines, then replace based on replacement policy
     if( replPolicy == CRC_REPL_LRU ) 
     {
@@ -186,8 +214,16 @@ INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, cons
     else if( replPolicy == CRC_REPL_CONTESTANT )
     {
         // Contestants:  ADD YOUR VICTIM SELECTION FUNCTION HERE
+        INT32 myWay = Get_My_Victim( setIndex );
+        if (myWay >= 0)
+        {
+            return myWay;
+        }
+        else
+        {
+            return Get_LRU_Victim( setIndex );
+        }
 
-	return Get_My_Victim (setIndex);
     }
 
     // We should never get here  
@@ -266,24 +302,7 @@ INT32 CACHE_REPLACEMENT_STATE::Get_LRU_Victim( UINT32 setIndex )
 	return lruWay;
 }
 
-// Get dead-block prediction victim in LLC
 
-INT32 CACHE_REPLACEMENT_STATE::Get_My_Victim( UINT32 setIndex ) 
-{
-	// return first way always
-
-    LINE_REPLACEMENT_STATE *replSet = repl[setIndex];
-    INT32 myWay = -1;
-    for (UINT32 way=0; way<assoc; way++) {
-        if (replSet[way].dead == true) {
-            myWay = way;
-            break;
-        }
-    }
-	// if here does not have dead block, we need to call Get_LRU_Victim?????
-    return myWay;
-
-}
 
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
@@ -295,6 +314,27 @@ INT32 CACHE_REPLACEMENT_STATE::Get_Random_Victim( UINT32 setIndex )
     INT32 way = (rand() % assoc);
     
     return way;
+}
+
+// Get dead-block prediction victim in LLC
+
+INT32 CACHE_REPLACEMENT_STATE::Get_My_Victim( UINT32 setIndex) 
+{
+	// return first way always
+
+    LINE_REPLACEMENT_STATE *replSet = repl[setIndex];
+    INT32 myWay = -1;
+    for (UINT32 way=0; way<assoc; way++)
+    {
+        if (replSet[way].dead == true)
+        {
+            myWay = way;
+            break;
+        }
+    }
+
+    return myWay;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -313,8 +353,8 @@ void CACHE_REPLACEMENT_STATE::UpdateLRU( UINT32 setIndex, INT32 updateWayID )
 	// Update the stack position of all lines before the current line
 	// Update implies incremeting their stack positions by one
 
-	for(UINT32 way=0; way<assoc; way++) {
-		if( repl[setIndex][way].LRUstackposition < currLRUstackposition ) {
+	for (UINT32 way=0; way<assoc; way++) {
+		if ( repl[setIndex][way].LRUstackposition < currLRUstackposition ) {
 			repl[setIndex][way].LRUstackposition++;
 		}
 	}
@@ -327,7 +367,17 @@ void CACHE_REPLACEMENT_STATE::UpdateLRU( UINT32 setIndex, INT32 updateWayID )
 
 void CACHE_REPLACEMENT_STATE::UpdateMyPolicy( UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID ) 
 {
-	// do nothing
+	// Determine the current dead state position????
+
+    for (UINT32 way=0; way<assoc; way++)
+    {
+        if (repl[setIndex][way].dead == true)
+        {
+            updateWayID = way;
+            break;
+        }
+    }
+    repl[setIndex][updateWayID].dead = false;
 }
 
 CACHE_REPLACEMENT_STATE::~CACHE_REPLACEMENT_STATE (void) {
@@ -408,65 +458,77 @@ INT32 CACHE_REPLACEMENT_STATE::GetSamplerMyVictim( UINT32 samplerSetIndex )
 
     LINE_REPLACEMENT_STATE *replSamplerSet = replSampler[samplerSetIndex];
     INT32 mySamplerWay = -1;
-    for (UINT32 way=0; way<SAMPLER_ASSOC; way++) {
-        if (replSamplerSet[way].dead == true) {
+    for (UINT32 way=0; way<SAMPLER_ASSOC; way++)
+    {
+        if (replSamplerSet[way].dead == true)
+        {
             mySamplerWay = way;
             break;
         }
     }
-	// if here does not have dead block, we need to call GetLruVictim?????
+
     return mySamplerWay;
 
 }
 
+
 // Get the victim block in sampler cache
-
-
 
 INT32 CACHE_REPLACEMENT_STATE::GetVictimInSamplerSet(UINT32 samplerSetIndex, const LINE_STATE *vicSamplerSet, UINT32 samplerAssoc, Addr_t PC, Addr_t paddr, UINT32 accessType, bool dead)
 {
+    UINT32 victim;
     UINT32 i, j;
     Addr_t tag;  // how to initilize the tag value???
-    for (i=0; i<SAMPLER_SIZE; i++)
-    {
-        for (j=0; j<SAMPLER_ASSOC; j++)
-        {
-            if (vicSamplerSet[j].tag == (tag & ((1 << TAG_LENGTH)-1)))
-            {
-                return 0;  // sampler cache hit
-            }
-            else if (samplerSets[i].valid == false)
-            {
-                if (((samplerSets[i].samplerBlocks)[j]).valid == false)
-                {
-                    break;
-                }
-            }
-            else if (samplerSets[i].valid == true)
-            {
-                // If no invalid lines, then replace based on replacement policy
-                if (replPolicy == CRC_REPL_LRU)
-                {
-                    return GetSamplerLruVictim(samplerSetIndex);
-                }
-                else if (replPolicy == CRC_REPL_RANDOM)
-                {
-                    return GetSamplerRandomVictim(samplerSetIndex);
-                }
-                else if (replPolicy == CRC_REPL_CONTESTANT)
-                {
-                    // Add victim selection function...............
 
-                    return GetSamplerMyVictim(samplerSetIndex);
-                }
-            }
-        }       
-        tag =  vicSamplerSet[j].tag;
-        return tag;
-  
-        assert(0);
-        return -1;
+    for (j=0; j<SAMPLER_ASSOC; j++)
+    {
+        if (vicSamplerSet[j].tag == (tag & ((1 << TAG_LENGTH)-1)))
+        {
+            return 0;  // sampler cache hit
+        }
     }
+    if (samplerSets[samplerSetIndex].valid == false)
+    {
+        for (i=0; i<SAMPLER_ASSOC; i++)
+        {
+            if ((samplerSets[samplerSetIndex].samplerBlocks)[i].valid == false)
+            {
+                victim = i;
+                break;
+            }
+        }
+        if (i == SAMPLER_ASSOC)
+        {
+            samplerSets[samplerSetIndex].valid = true;
+        }
+    }
+    // If no invalid lines, then replace based on replacement policy
+    if (replPolicy == CRC_REPL_LRU)
+    {
+        return GetSamplerLruVictim(samplerSetIndex);
+    }
+    else if (replPolicy == CRC_REPL_RANDOM)
+    {
+        return GetSamplerRandomVictim(samplerSetIndex);
+    }
+    else if (replPolicy == CRC_REPL_CONTESTANT)
+    {
+        // My victim selection function
+
+        INT32 mySamplerWay = GetSamplerMyVictim( samplerSetIndex );
+        if (mySamplerWay >= 0)
+        {
+            return mySamplerWay;
+        }
+        else
+        {
+            return GetSamplerLruVictim( samplerSetIndex );
+        }
+
+    }
+
+    assert(0);
+    return -1;
 }
 
 
