@@ -380,6 +380,8 @@ void CACHE_REPLACEMENT_STATE::UpdateMyPolicy( UINT32 setIndex, UINT32 samplerSet
     repl[setIndex][updateWayID].dead = false;
 }
 
+
+
 CACHE_REPLACEMENT_STATE::~CACHE_REPLACEMENT_STATE (void) {
 }
 
@@ -553,6 +555,25 @@ void CACHE_REPLACEMENT_STATE::UpdateSamplerLRU( UINT32 samplerSetIndex, INT32 up
 	replSampler[ samplerSetIndex ][ updateWayID ].LRUstackposition = 0;
 }
 
+// Update sampler My policy
+
+void CACHE_REPLACEMENT_STATE::UpdateSamplerMyPolicy(UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID)
+{
+	// Determine the current dead state position????
+
+    for (UINT32 way=0; way<SAMPLER_ASSOC; way++)
+    {
+        if (replSampler[samplerSetIndex][way].dead == true)
+        {
+            updateWayID = way;
+            break;
+        }
+    }
+    replSampler[samplerSetIndex][updateWayID].dead = false;
+}
+
+
+
 // Update sampler replacement
 
 void CACHE_REPLACEMENT_STATE::UpdateSamplerReplacementState(UINT32 samplerSetIndex, INT32 updateWayID, UINT32 setIndex, const LINE_STATE *currBlock, Addr_t PC, UINT32 accessType, bool cacheHit, bool dead)
@@ -568,7 +589,7 @@ void CACHE_REPLACEMENT_STATE::UpdateSamplerReplacementState(UINT32 samplerSetInd
     }
     else if (replPolicy == CRC_REPL_CONTESTANT)
     {
-        UpdateMyPolicy(setIndex, samplerSetIndex, updateWayID);
+        UpdateSamplerMyPolicy(setIndex, samplerSetIndex, updateWayID);
     }
 
 

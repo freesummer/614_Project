@@ -202,7 +202,7 @@ public:
 
     void UpdateSamplerLRU(UINT32 samplerSetIndex, INT32 updateWayID);
 
-    //void UpdateMySamplerPolicy(UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID);
+    void UpdateSamplerMyPolicy(UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID);
  
     ~CACHE_REPLACEMENT_STATE(void);
 };
