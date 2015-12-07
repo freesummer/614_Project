@@ -148,7 +148,7 @@ private:
     INT32  Get_LRU_Victim( UINT32 setIndex );  
     INT32  Get_My_Victim( UINT32 setIndex); 
     void   UpdateLRU( UINT32 setIndex, INT32 updateWayID ); 
-    void   UpdateMyPolicy( UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID );
+    void   UpdateMyPolicy( UINT32 setIndex, INT32 updateWayID );
 
 public:
 
