@@ -175,35 +175,16 @@ void CACHE_REPLACEMENT_STATE::InitReplacementState()
 INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, const LINE_STATE *vicSet, UINT32 assoc, Addr_t PC, Addr_t paddr, UINT32 accessType )
 {
 
-    UINT32 victim;
-    UINT32 i, j;
-    Addr_t tag;  // how to initilize the tag value???
+    // to decide whether to do bypass or not
 
-    for (j=0; j<assoc; j++)
+    bool myBypass = IsDead(PC);
+    if (myBypass = true)
     {
-        if (vicSet[j].tag == tag)
-        {
-            return 0;  // sampler cache hit
-        }
+        return -1;  // what I should return for this end???
     }
-    if (sets[setIndex].valid == false)
-    {
-        for (i=0; i<assoc; i++)
-        {
-            if ((sets[setIndex].blocks)[i].valid == false)
-            {
-                victim = i;
-                break;
-            }
-        }
-        if (i == assoc)
-        {
-            sets[setIndex].valid = true;
-        }
-    }
-
+    
     // If no invalid lines, then replace based on replacement policy
-    if( replPolicy == CRC_REPL_LRU ) 
+    else if( replPolicy == CRC_REPL_LRU ) 
     {
         return Get_LRU_Victim( setIndex );
     }
@@ -215,12 +196,15 @@ INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, cons
     {
         // Contestants:  ADD YOUR VICTIM SELECTION FUNCTION HERE
         INT32 myWay = Get_My_Victim( setIndex );
+        bool flag = false;
         if (myWay >= 0)
         {
+            flag = true;
             return myWay;
         }
         else
         {
+            flag = false;
             return Get_LRU_Victim( setIndex );
         }
 
@@ -243,30 +227,89 @@ INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, cons
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 void CACHE_REPLACEMENT_STATE::UpdateReplacementState( 
-    UINT32 setIndex, INT32 updateWayID, const LINE_STATE *currLine, 
+    UINT32 setIndex,  INT32 updateWayID, const LINE_STATE *currLine, 
     UINT32 tid, Addr_t PC, UINT32 accessType, bool cacheHit )
 {
 	//fprintf (stderr, "ain't I a stinker? %lld\n", get_cycle_count ());
 	//fflush (stderr);
-     // updateWayId is the updated way-block, shows which block is going to be replaced???
+    // updateWayId is the updated way-block, shows which block is going to be replaced???
     // What replacement policy?
-    if( replPolicy == CRC_REPL_LRU ) 
+
+    // if the block is not getting sampled
+ 
+    bool IsSampled = IsSamplerHit( setIndex, samplerSetIndex );
+    if (IsSampled == false)
     {
-        UpdateLRU( setIndex, updateWayID );
-    }
-    else if( replPolicy == CRC_REPL_RANDOM )
-    {
-        // Random replacement requires no replacement state update
-    }
-    else if( replPolicy == CRC_REPL_CONTESTANT )
-    {
-        UpdateMyPolicy(setIndex, samplerSetIndex, updateWayID);
+
+        dead = IsDead (PC);
+
+        if (flag == true)
+        {
+            flag = false;
+            UpdateMyPolicy( setIndex, samplerSetIndex, updateWayID );
+
+        }
+        else
+        {
+            UpdateLRU( setIndex, updateWayID );
+        } 
+       
         // Contestants:  ADD YOUR UPDATE REPLACEMENT STATE FUNCTION HERE
         // Feel free to use any of the input parameters to make
         // updates to your replacement policy
         // should add sampler, if it was in sampler, then do update???
+
+    }
+
+    // if this block is getting sampled
+
+    else
+    {
+        UINT32 samplerSetIndex = GetSamplerSetIndex(setIndex);
+        bool cacheHit = false;
+        for (UINT32 i=0; i<SAMPLER_ASSOC; i++)
+        {
+            if (vicSamplerSet[i].tag == (tag & ((1 << TAG_LENGTH)-1)))
+            {
+                cacheHit = true;
+                updateSamplerLRU( samplerSetIndex, updateWayID);
+                updatePredictorDecrease( PC );
+                return;  // sampler cache hit
+            }
+        }
+        if (samplerSets[samplerSetIndex].valid == false)
+        {
+            UINT32 i;
+            for (i=0; i<SAMPLER_ASSOC; i++)
+            {
+                if ((samplerSets[samplerSetIndex].samplerBlocks)[i].valid == false)
+                {
+                    updateWayID = i;
+                    break;
+                }
+            }
+            if (i == SAMPLER_ASSOC)
+            {
+                samplerSets[samplerSetIndex].valid = true;
+                INT32 mySamplerWay = GetSamplerMyVictim( samplerSetIndex );
+                if (mySamplerWay >= 0)
+                {
+                    flag = true;
+                    UpdateSamplerMyPolicy( setIndex, samplerSetIndex, updateWayID );
+                    CounterIncrease(PC);
+                }
+                else
+                {
+                    flag = false;
+                    UpdateSamplerLRU( samplerSetIndex, updateWayID);
+            
+                }
+            }
+        }
+
     }
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
@@ -397,7 +440,7 @@ CACHE_REPLACEMENT_STATE::~CACHE_REPLACEMENT_STATE (void) {
 
 INT32 CACHE_REPLACEMENT_STATE::GetSamplerSetIndex(UINT32 setIndex)
 {
-    if ( (setIndex+1) % 64 == 0 )
+    if ( setIndex % 64 == 0 )
     {
         samplerSetIndex = setIndex;
     }
@@ -407,6 +450,7 @@ INT32 CACHE_REPLACEMENT_STATE::GetSamplerSetIndex(UINT32 setIndex)
     }
     return samplerSetIndex;
 }
+
 
 bool CACHE_REPLACEMENT_STATE::IsSamplerHit(UINT32 setIndex, UINT32 samplerSetIndex)
 {
@@ -475,6 +519,7 @@ INT32 CACHE_REPLACEMENT_STATE::GetSamplerMyVictim( UINT32 samplerSetIndex )
 
 
 // Get the victim block in sampler cache
+/*
 
 INT32 CACHE_REPLACEMENT_STATE::GetVictimInSamplerSet(UINT32 samplerSetIndex, const LINE_STATE *vicSamplerSet, UINT32 samplerAssoc, Addr_t PC, Addr_t paddr, UINT32 accessType, bool dead)
 {
@@ -520,19 +565,23 @@ INT32 CACHE_REPLACEMENT_STATE::GetVictimInSamplerSet(UINT32 samplerSetIndex, con
         INT32 mySamplerWay = GetSamplerMyVictim( samplerSetIndex );
         if (mySamplerWay >= 0)
         {
+            flag = true;
             return mySamplerWay;
         }
         else
         {
+            flag = false;
             return GetSamplerLruVictim( samplerSetIndex );
         }
 
     }
 
+
     assert(0);
     return -1;
 }
 
+*/
 
 // Update sampler LRU replacement
 
@@ -566,34 +615,48 @@ void CACHE_REPLACEMENT_STATE::UpdateSamplerMyPolicy(UINT32 setIndex, UINT32 samp
         if (replSampler[samplerSetIndex][way].dead == true)
         {
             updateWayID = way;
+            Addr_t PC = replSampler[samplerSetIndex][updateWayID].PC;
             break;
         }
     }
     replSampler[samplerSetIndex][updateWayID].dead = false;
+    predictorResult(PC);
+
+
 }
 
-
+/*
 
 // Update sampler replacement
 
 void CACHE_REPLACEMENT_STATE::UpdateSamplerReplacementState(UINT32 samplerSetIndex, INT32 updateWayID, UINT32 setIndex, const LINE_STATE *currBlock, Addr_t PC, UINT32 accessType, bool cacheHit, bool dead)
 {
+    if (cacheHit == true)
+    {
+        UpdatePredictorDecrease(PC);
+UpdateSamplerLRU( samplerSetIndex, updateWayID);
 
-    if (replPolicy == CRC_REPL_LRU)
-    {
-        UpdateSamplerLRU(samplerSetIndex, updateWayID);
     }
-    else if (replPolicy == CRC_REPL_RANDOM)
+    else
     {
-        // Do nothing
-    }
-    else if (replPolicy == CRC_REPL_CONTESTANT)
-    {
-        UpdateSamplerMyPolicy(setIndex, samplerSetIndex, updateWayID);
+        if (replPolicy == CRC_REPL_LRU)
+        {
+            UpdateSamplerLRU(samplerSetIndex, updateWayID);
+        }
+        else if (replPolicy == CRC_REPL_RANDOM)
+        {
+            // Do nothing
+        }
+        else if (replPolicy == CRC_REPL_CONTESTANT)
+        {
+            UpdateSamplerMyPolicy(setIndex, samplerSetIndex, updateWayID);
+        }
     }
 
 
 }
+
+*/
 
 
 
@@ -660,4 +723,12 @@ INT32 CACHE_REPLACEMENT_STATE::predictorResult(Addr_t PC)
     }
 
     return counterSum;
+}
+
+// Update predictor
+
+
+void CACHE_REPLACEMENT_STATE::UpdatePredictorDecrease(Addr_t PC)
+{
+
 }

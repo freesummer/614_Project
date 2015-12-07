@@ -119,6 +119,8 @@ private:
 
     // CONTESTANTS:  Add extra state for cache here
     bool dead;
+    bool flag;
+    bool isSampled;
 
 public:
     ostream & PrintStats(ostream &out);
@@ -132,8 +134,7 @@ public:
 
     void   IncrementTimer() { mytimer++; } 
 
-    void   UpdateReplacementState( UINT32 setIndex, INT32 updateWayID, const LINE_STATE *currLine, 
-                                   UINT32 tid, Addr_t PC, UINT32 accessType, bool cacheHit );
+    void   UpdateReplacementState( UINT32 setIndex, INT32 updateWayID, const LINE_STATE *currLine, UINT32 tid, Addr_t PC, UINT32 accessType, bool cacheHit );
 
     bool IsPassby(Addr_t PC);
 
@@ -161,7 +162,7 @@ public:
     UINT32 samplerNumsets;
     UINT32 samplerSetIndex;
     UINT32 samplerAssoc;
-    bool isSampled;
+  
     unsigned long long misses, accesses;
 
     // Predictor table
@@ -179,6 +180,7 @@ public:
     INT32 predictorResult(Addr_t PC);
 
     bool IsDead(Addr_t PC);
+    void UpdatePredictorDecrease(Addr_t PC);
     void CounterDecrease(Addr_t PC);
     void CounterIncrease(Addr_t PC);
 
