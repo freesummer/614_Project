@@ -58,6 +58,7 @@ CACHE_REPLACEMENT_STATE::CACHE_REPLACEMENT_STATE( UINT32 _sets, UINT32 _assoc, U
 
 bool CACHE_REPLACEMENT_STATE::IsPassby(Addr_t PC)
 {
+    bool isPassby = false;
     UINT32 way;
     for (UINT32 setIndex=0; setIndex<numsets; setIndex++)
     {
@@ -65,14 +66,15 @@ bool CACHE_REPLACEMENT_STATE::IsPassby(Addr_t PC)
         {
             if (repl[setIndex][way].dead == true)
             {
-                return true;
+                isPassby = true;
             }
             else
             {
-                return false;
+                isPassby = false;
             }
         }
     }
+    return isPassby;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -177,8 +179,7 @@ INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, cons
 
     // to decide whether to do bypass or not
 
-    bool myBypass = IsDead(PC);
-    if (myBypass = true)
+    if (IsPassby(PC) == true)
     {
         return -1;  // what I should return for this end???
     }
@@ -196,7 +197,7 @@ INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, cons
     {
         // Contestants:  ADD YOUR VICTIM SELECTION FUNCTION HERE
         INT32 myWay = Get_My_Victim( setIndex );
-        bool flag = false;
+
         if (myWay >= 0)
         {
             flag = true;
@@ -266,47 +267,54 @@ void CACHE_REPLACEMENT_STATE::UpdateReplacementState(
     else
     {
         UINT32 samplerSetIndex = GetSamplerSetIndex(setIndex);
-        bool cacheHit = false;
-        for (UINT32 i=0; i<SAMPLER_ASSOC; i++)
+        if (cacheHit == true)
         {
-            if (vicSamplerSet[i].tag == (tag & ((1 << TAG_LENGTH)-1)))
-            {
-                cacheHit = true;
-                updateSamplerLRU( samplerSetIndex, updateWayID);
-                updatePredictorDecrease( PC );
-                return;  // sampler cache hit
-            }
-        }
-        if (samplerSets[samplerSetIndex].valid == false)
-        {
-            UINT32 i;
-            for (i=0; i<SAMPLER_ASSOC; i++)
-            {
-                if ((samplerSets[samplerSetIndex].samplerBlocks)[i].valid == false)
-                {
-                    updateWayID = i;
-                    break;
-                }
-            }
-            if (i == SAMPLER_ASSOC)
-            {
-                samplerSets[samplerSetIndex].valid = true;
-                INT32 mySamplerWay = GetSamplerMyVictim( samplerSetIndex );
-                if (mySamplerWay >= 0)
-                {
-                    flag = true;
-                    UpdateSamplerMyPolicy( setIndex, samplerSetIndex, updateWayID );
-                    CounterIncrease(PC);
-                }
-                else
-                {
-                    flag = false;
-                    UpdateSamplerLRU( samplerSetIndex, updateWayID);
+            /*
+              bool cacheHit = false;
+              for (UINT32 i=0; i<SAMPLER_ASSOC; i++)
+              {
+              if (vicSamplerSet[i].tag == (tag & ((1 << TAG_LENGTH)-1)))
+              {
             
-                }
-            }
+              cacheHit = true;
+            */
+            UpdateSamplerLRU( samplerSetIndex, updateWayID );
+            UpdatePredictorDecrease( PC );
+            return;  // sampler cache hit
         }
+        else
+             {
+                 if (samplerSets[samplerSetIndex].valid == false)
+                 {
+                     UINT32 i;
+                     for (i=0; i<SAMPLER_ASSOC; i++)
+                     {
+                         if ((samplerSets[samplerSetIndex].samplerBlocks)[i].valid == false)
+                         {
+                             updateWayID = i;
+                             break;
+                         }
+                     }
+                     if (i == SAMPLER_ASSOC)
+                     {
+                         samplerSets[samplerSetIndex].valid = true;
+                         INT32 mySamplerWay = GetSamplerMyVictim( samplerSetIndex );
+                         if (mySamplerWay >= 0)
+                         {
+                             flag = true;
+                             UpdateSamplerMyPolicy( setIndex, samplerSetIndex, updateWayID );
+                             CounterIncrease(PC);
+                         }
+                         else
+                         {
+                             flag = false;
+                             UpdateSamplerLRU( samplerSetIndex, updateWayID);
+            
+                         }
+                     }
+                 }
 
+             }
     }
 }
 
@@ -615,7 +623,7 @@ void CACHE_REPLACEMENT_STATE::UpdateSamplerMyPolicy(UINT32 setIndex, UINT32 samp
         if (replSampler[samplerSetIndex][way].dead == true)
         {
             updateWayID = way;
-            Addr_t PC = replSampler[samplerSetIndex][updateWayID].PC;
+            //  Addr_t PC = replSampler[samplerSetIndex][updateWayID].PC;
             break;
         }
     }
@@ -731,4 +739,8 @@ INT32 CACHE_REPLACEMENT_STATE::predictorResult(Addr_t PC)
 void CACHE_REPLACEMENT_STATE::UpdatePredictorDecrease(Addr_t PC)
 {
 
+}
+
+void CACHE_REPLACEMENT_STATE::CounterIncrease(Addr_t PC)
+{
 }

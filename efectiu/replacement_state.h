@@ -121,6 +121,7 @@ private:
     bool dead;
     bool flag;
     bool isSampled;
+    bool isPassby;
 
 public:
     ostream & PrintStats(ostream &out);
