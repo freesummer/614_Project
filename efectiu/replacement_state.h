@@ -66,15 +66,15 @@ struct samplerBlock
     UINT32 LruStackPosition;
     bool valid;
     bool dead;
-    Addr_t PC;
-    Addr_t tag;
+    Addr_t Sampler_PC;
+    Addr_t Sampler_tag;
 
     samplerBlock (void)
         {
             valid = false;
             dead = false;
-            tag = 0;
-            PC = 0;
+            Sampler_tag = 0;
+            Sampler_PC = 0;
         }
 };
 
@@ -98,6 +98,11 @@ struct samplerSet
 };
 
 
+struct Sampler_Block_State
+{
+    Addr_t Sampler_tag;
+    Addr_t Sampler_PC;
+};
 
 // The implementation for the cache replacement policy
 
@@ -106,6 +111,7 @@ class CACHE_REPLACEMENT_STATE
 public:
     LINE_REPLACEMENT_STATE   **repl;
 
+    Addr_t PC;
 
 private:
 
@@ -168,40 +174,38 @@ public:
 
     // Predictor table
 
-    Addr_t PC;
+    Addr_t Sampler_tag;
+    Addr_t Sampler_PC;
     int predictorEntry;
     int counterSum;
 
     int **table;
 
-    // Predictor function
+    // Predictor function: predict whether have dead block and update function
   
     void InitMyPredictor();
 
-    INT32 predictorResult(Addr_t PC);
+    INT32 predictorResult(Addr_t Sampler_PC, Addr_t PC);
 
     bool IsDead(Addr_t PC);
-    void UpdatePredictorDecrease(Addr_t PC);
-    void CounterDecrease(Addr_t PC);
-    void CounterIncrease(Addr_t PC);
+    void UpdatePredictorDecrease(Addr_t Sampler_PC);
+    void CounterIncrease(Addr_t Sampler_PC);
 
     // sampler function
 
     INT32 GetSamplerSetIndex(UINT32 setIndex);
 
-    INT32 GetVictimInSamplerSet(UINT32 samplerSetIndex, const LINE_STATE *vicSamplerSet,  UINT32 samplerAssoc, Addr_t PC, Addr_t paddr, UINT32 accessType, bool dead);
+    void SamplerPlace(UINT32 PC, UINT32 samplerSetIndex, samplerBlock *sb); 
 
-    void SetSamplerReplacementPolicy(UINT32 _pol) {replPolicy = _pol;}
-
-    void UpdateSamplerReplacementState(UINT32 samplerSetIndex, INT32 updateWayID, UINT32 setIndex, const LINE_STATE *currBlock, Addr_t PC, UINT32 accessType, bool cacheHit, bool dead);
- 
     bool IsSamplerHit(UINT32 setIndex, UINT32 samplerSetIndex);
 
     void InitSamplerSets();
 
-    INT32 GetSamplerRandomVictim(UINT32 samplerSetIndex);
     INT32 GetSamplerLruVictim(UINT32 samplerSetIndex);
+
     INT32 GetSamplerMyVictim(UINT32 samplerSetIndex);
+
+    void UpdateSamplerHitLRU(samplerBlock *s, int i);
 
     void UpdateSamplerLRU(UINT32 samplerSetIndex, INT32 updateWayID);
 

@@ -77,6 +77,11 @@ bool CACHE_REPLACEMENT_STATE::IsPassby(Addr_t PC)
     return isPassby;
 }
 
+void CACHE_REPLACEMENT_STATE::SamplerPlace(UINT32 PC, UINT32 samplerSetIndex, samplerBlock *sb)
+{
+    sb->Sampler_PC = PC & ((1<<PC_LENGTH)-1);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
 // The function prints the statistics for the cache                           //
@@ -158,8 +163,8 @@ void CACHE_REPLACEMENT_STATE::InitReplacementState()
             ((samplerSets[i].samplerBlocks)[j]).dead = false;
             ((samplerSets[i].samplerBlocks)[j]).LruStackPosition = j;
             ((samplerSets[i].samplerBlocks)[j]).valid = false;
-            ((samplerSets[i].samplerBlocks)[j]).PC = 0;
-            ((samplerSets[i].samplerBlocks)[j]).tag = 0;
+            ((samplerSets[i].samplerBlocks)[j]).Sampler_PC = 0;
+            ((samplerSets[i].samplerBlocks)[j]).Sampler_tag = 0;
         }
     }
 }
@@ -221,6 +226,20 @@ INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, cons
     return -1;
 }
 
+// Update sampler LRU when the sampler got hit
+
+void CACHE_REPLACEMENT_STATE::UpdateSamplerHitLRU( samplerBlock *s, int i )
+{
+    int j;
+    samplerBlock sb = s[i];
+    for (j=1; j>=1; j--)
+    {
+        s[j] = s[j-1];
+        s[0] = sb;
+    }
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////
 //                                                                            //
 // This function is called by the cache after every cache hit/miss            //
@@ -232,11 +251,9 @@ INT32 CACHE_REPLACEMENT_STATE::GetVictimInSet( UINT32 tid, UINT32 setIndex, cons
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 void CACHE_REPLACEMENT_STATE::UpdateReplacementState( 
-    UINT32 setIndex,  INT32 updateWayID, const LINE_STATE *currLine, 
-    UINT32 tid, Addr_t PC, UINT32 accessType, bool cacheHit )
+    UINT32 setIndex,  INT32 updateWayID, const LINE_STATE *currLine, UINT32 tid, Addr_t PC, UINT32 accessType, bool cacheHit )
 {
-    // updateWayId is the updated way-block, shows which block is going to be replaced???
-    // What replacement policy?
+    // updateWayId is the updated way-block, shows which block is going to be replaced.
 
     IsDead(PC); // Show the current dead status
 
@@ -258,64 +275,66 @@ void CACHE_REPLACEMENT_STATE::UpdateReplacementState(
         // Contestants:  ADD YOUR UPDATE REPLACEMENT STATE FUNCTION HERE
         // Feel free to use any of the input parameters to make
         // updates to your replacement policy
-        // should add sampler, if it was in sampler, then do update???
+      
         // if this block is getting sampled
   
     {
         UINT32 samplerSetIndex = GetSamplerSetIndex(setIndex);
 
-        // Sampler Hit
+        // Sampler Hit: the tag is being matched
 
-        if (cacheHit == true)
+        samplerBlock *s;
+
+        s = &samplerSets[samplerSetIndex].samplerBlocks[0];
+
+        Sampler_Block_State sbs;    // sampler tag state
+
+        UINT32 i;
+        for (i=0; i<SAMPLER_ASSOC; i++)
         {
-            /*
-              bool cacheHit = false;
-              for (UINT32 i=0; i<SAMPLER_ASSOC; i++)
-              {
-              if (vicSamplerSet[i].tag == (tag & ((1 << TAG_LENGTH)-1)))
-              {
-            
-              cacheHit = true;
-            */
-            UpdateSamplerLRU( samplerSetIndex, updateWayID );
-            UpdatePredictorDecrease( PC );
-            return;  // sampler cache hit
+            if ( s[i].Sampler_tag == (PC & ((1<<PC_LENGTH)-1)) )
+            {
+                if  (i != 0)
+                {
+                    UpdateSamplerHitLRU (s, i);
+                }
+                sbs.Sampler_tag = Sampler_tag;
+                sbs.Sampler_PC = Sampler_PC;
+                UpdatePredictorDecrease( Sampler_PC );
+                return;
+            }
         }
 
         // Sampler miss
 
-        else
+        if (samplerSets[samplerSetIndex].valid == false)
         {
-            if (samplerSets[samplerSetIndex].valid == false)
+            UINT32 i;
+            for (i=0; i<SAMPLER_ASSOC; i++)
             {
-                UINT32 i;
-                for (i=0; i<SAMPLER_ASSOC; i++)
+                if ((samplerSets[samplerSetIndex].samplerBlocks)[i].valid == false)
                 {
-                    if ((samplerSets[samplerSetIndex].samplerBlocks)[i].valid == false)
-                    {
-                        updateWayID = i;
-                        break;
-                    }
-                }
-                if (i == SAMPLER_ASSOC)
-                {
-                    samplerSets[samplerSetIndex].valid = true;
-                    INT32 mySamplerWay = GetSamplerMyVictim( samplerSetIndex );
-                    if (mySamplerWay >= 0)
-                    {
-                        flag = true;
-                        UpdateSamplerMyPolicy( setIndex, samplerSetIndex, updateWayID );
-                        CounterIncrease(PC);
-                    }
-                    else
-                    {
-                        flag = false;
-                        UpdateSamplerLRU( samplerSetIndex, updateWayID);
-            
-                    }
+                    updateWayID = i;
+                    break;
                 }
             }
-
+            if (i == SAMPLER_ASSOC)
+            {
+                samplerSets[samplerSetIndex].valid = true;
+                INT32 mySamplerWay = GetSamplerMyVictim( samplerSetIndex );
+                if (mySamplerWay >= 0)
+                {
+                    flag = true;
+                    UpdateSamplerMyPolicy( setIndex, samplerSetIndex, updateWayID );
+                    CounterIncrease(Sampler_PC);
+                }
+                else
+                {
+                    flag = false;
+                    UpdateSamplerLRU( samplerSetIndex, updateWayID);
+            
+                }
+            }
         }
     }
 }
@@ -498,6 +517,7 @@ INT32 CACHE_REPLACEMENT_STATE::GetSamplerLruVictim(UINT32 samplerSetIndex)
 }
 
 // Get Sampler Random victim
+/*
 
 INT32 CACHE_REPLACEMENT_STATE::GetSamplerRandomVictim( UINT32 samplerSetIndex )
 {
@@ -505,6 +525,8 @@ INT32 CACHE_REPLACEMENT_STATE::GetSamplerRandomVictim( UINT32 samplerSetIndex )
     
     return way;
 }
+
+*/
 
 // Get dead-block prediction victim in Sampler cache
 
@@ -566,7 +588,7 @@ void CACHE_REPLACEMENT_STATE::UpdateSamplerMyPolicy(UINT32 setIndex, UINT32 samp
         }
     }
     replSampler[samplerSetIndex][updateWayID].dead = false;
-    predictorResult(PC);
+    predictorResult(Sampler_PC, PC);
 
 
 }
@@ -598,10 +620,10 @@ void CACHE_REPLACEMENT_STATE::InitMyPredictor()
 }
 
 
-bool CACHE_REPLACEMENT_STATE::IsDead(Addr_t PC)
+bool CACHE_REPLACEMENT_STATE::IsDead(Addr_t Sampler_PC)
 {
     bool dead = false;
-    predictorResult(PC);
+    predictorResult(Sampler_PC, PC);
    
     if (counterSum >= THRESHOLD)
     {
@@ -615,10 +637,10 @@ bool CACHE_REPLACEMENT_STATE::IsDead(Addr_t PC)
 }
 
 
-INT32 CACHE_REPLACEMENT_STATE::predictorResult(Addr_t PC)
+INT32 CACHE_REPLACEMENT_STATE::predictorResult(Addr_t Sampler_PC, Addr_t PC)
 {
     int counterSum = 0;
-    PC &= ((1<<PC_LENGTH)-1);
+    Sampler_PC = PC & ((1<<PC_LENGTH)-1);
     int hash[3];
     hash[0] = 4096;
     hash[1] = 4096;
@@ -626,7 +648,7 @@ INT32 CACHE_REPLACEMENT_STATE::predictorResult(Addr_t PC)
 
     for (int i=0; i<PREDICTOR_NUM; i++)
     {
-        predictorEntry = PC % hash[i];
+        predictorEntry = Sampler_PC % hash[i];
         table[predictorEntry][i] ++;
         if (table[predictorEntry][i] > 3)
             table[predictorEntry][i] = 3;
@@ -641,11 +663,11 @@ INT32 CACHE_REPLACEMENT_STATE::predictorResult(Addr_t PC)
 // Update predictor
 
 
-void CACHE_REPLACEMENT_STATE::UpdatePredictorDecrease(Addr_t PC)
+void CACHE_REPLACEMENT_STATE::UpdatePredictorDecrease(Addr_t Sampler_PC)
 {
 
 }
 
-void CACHE_REPLACEMENT_STATE::CounterIncrease(Addr_t PC)
+void CACHE_REPLACEMENT_STATE::CounterIncrease(Addr_t Sampler_PC)
 {
 }
