@@ -77,6 +77,9 @@ bool CACHE_REPLACEMENT_STATE::IsPassby(Addr_t PC)
     return isPassby;
 }
 
+
+// Sampler place function????
+
 void CACHE_REPLACEMENT_STATE::SamplerPlace(UINT32 PC, UINT32 samplerSetIndex, samplerBlock *sb)
 {
     sb->Sampler_PC = PC & ((1<<PC_LENGTH)-1);
@@ -257,15 +260,19 @@ void CACHE_REPLACEMENT_STATE::UpdateReplacementState(
 
     IsDead(PC); // Show the current dead status
 
+    INT32 myWay = Get_My_Victim( setIndex );
+
+    INT32 lruWay = Get_LRU_Victim( setIndex );
+
     if (flag == true)
     {
         flag = false;
-        UpdateMyPolicy( setIndex,  updateWayID );
+        UpdateMyPolicy( setIndex,  myWay );
 
     }
     else
     {
-        UpdateLRU( setIndex, updateWayID );
+        UpdateLRU( setIndex, lruWay );
     } 
  
     bool IsSampled = IsSamplerHit( setIndex, samplerSetIndex );
@@ -279,7 +286,7 @@ void CACHE_REPLACEMENT_STATE::UpdateReplacementState(
         // if this block is getting sampled
   
     {
-        UINT32 samplerSetIndex = GetSamplerSetIndex(setIndex);
+        UINT32 samplerSetIndex = GetSamplerSetIndex( setIndex );
 
         // Sampler Hit: the tag is being matched
 
@@ -287,7 +294,7 @@ void CACHE_REPLACEMENT_STATE::UpdateReplacementState(
 
         s = &samplerSets[samplerSetIndex].samplerBlocks[0];
 
-        Sampler_Block_State sbs;    // sampler tag state
+        // Sampler_Block_State sbs;    // sampler tag state
 
         UINT32 i;
         for (i=0; i<SAMPLER_ASSOC; i++)
@@ -298,8 +305,8 @@ void CACHE_REPLACEMENT_STATE::UpdateReplacementState(
                 {
                     UpdateSamplerHitLRU (s, i);
                 }
-                sbs.Sampler_tag = Sampler_tag;
-                sbs.Sampler_PC = Sampler_PC;
+                s[i].Sampler_tag = Sampler_tag;
+                s[i].Sampler_PC = Sampler_PC;
                 UpdatePredictorDecrease( Sampler_PC );
                 return;
             }
@@ -315,6 +322,12 @@ void CACHE_REPLACEMENT_STATE::UpdateReplacementState(
                 if ((samplerSets[samplerSetIndex].samplerBlocks)[i].valid == false)
                 {
                     updateWayID = i;
+
+                    // Update the states using the first match if there has valid block
+
+                    s[i].Sampler_tag = Sampler_tag;
+                    s[i].Sampler_PC = Sampler_PC;
+                    s[i].valid = true;
                     break;
                 }
             }
@@ -325,13 +338,23 @@ void CACHE_REPLACEMENT_STATE::UpdateReplacementState(
                 if (mySamplerWay >= 0)
                 {
                     flag = true;
-                    UpdateSamplerMyPolicy( setIndex, samplerSetIndex, updateWayID );
+
+                    // Update sampler my dead policy
+
+                    s[mySamplerWay].dead = false;
+                    Sampler_PC = s[mySamplerWay].Sampler_PC;
                     CounterIncrease(Sampler_PC);
                 }
                 else
                 {
                     flag = false;
-                    UpdateSamplerLRU( samplerSetIndex, updateWayID);
+                    INT32 lruSamplerWay = GetSamplerLruVictim( samplerSetIndex );
+
+                    // Update sampler LRU policy
+
+                    s[0].Sampler_tag = Sampler_tag;
+                    s[0].valid = true;
+                    UpdateSamplerLRU( samplerSetIndex, lruSamplerWay );
             
                 }
             }
@@ -390,11 +413,11 @@ INT32 CACHE_REPLACEMENT_STATE::Get_Random_Victim( UINT32 setIndex )
 
 // Get dead-block prediction victim in LLC
 
-INT32 CACHE_REPLACEMENT_STATE::Get_My_Victim( UINT32 setIndex) 
+INT32 CACHE_REPLACEMENT_STATE::Get_My_Victim( UINT32 setIndex ) 
 {
 	// return first way always
 
-    LINE_REPLACEMENT_STATE *replSet = repl[setIndex];
+    LINE_REPLACEMENT_STATE *replSet = repl[ setIndex ];
     INT32 myWay = -1;
     for (UINT32 way=0; way<assoc; way++)
     {
@@ -417,10 +440,10 @@ INT32 CACHE_REPLACEMENT_STATE::Get_My_Victim( UINT32 setIndex)
 //                                                                            //
 ////////////////////////////////////////////////////////////////////////////////
 
-void CACHE_REPLACEMENT_STATE::UpdateLRU( UINT32 setIndex, INT32 updateWayID )
+void CACHE_REPLACEMENT_STATE::UpdateLRU( UINT32 setIndex, INT32 lruWay )
 {
 	// Determine current LRU stack position
-	UINT32 currLRUstackposition = repl[ setIndex ][ updateWayID ].LRUstackposition;
+	UINT32 currLRUstackposition = repl[ setIndex ][ lruWay ].LRUstackposition;
 
 	// Update the stack position of all lines before the current line
 	// Update implies incremeting their stack positions by one
@@ -432,12 +455,12 @@ void CACHE_REPLACEMENT_STATE::UpdateLRU( UINT32 setIndex, INT32 updateWayID )
 	}
 
 	// Set the LRU stack position of new line to be zero
-	repl[ setIndex ][ updateWayID ].LRUstackposition = 0;
+	repl[ setIndex ][ lruWay ].LRUstackposition = 0;
 }
 
 
 
-void CACHE_REPLACEMENT_STATE::UpdateMyPolicy( UINT32 setIndex, INT32 updateWayID ) 
+void CACHE_REPLACEMENT_STATE::UpdateMyPolicy( UINT32 setIndex, INT32 myWay ) 
 {
 	// Determine the current dead state position????
 
@@ -445,11 +468,11 @@ void CACHE_REPLACEMENT_STATE::UpdateMyPolicy( UINT32 setIndex, INT32 updateWayID
     {
         if (repl[setIndex][way].dead == true)
         {
-            updateWayID = way;
+            myWay = way;
             break;
         }
     }
-    repl[setIndex][updateWayID].dead = false;
+    repl[setIndex][myWay].dead = false;
 }
 
 
@@ -467,7 +490,7 @@ CACHE_REPLACEMENT_STATE::~CACHE_REPLACEMENT_STATE (void) {
 
 // decide whether this set is being sampled or not
 
-INT32 CACHE_REPLACEMENT_STATE::GetSamplerSetIndex(UINT32 setIndex)
+INT32 CACHE_REPLACEMENT_STATE::GetSamplerSetIndex( UINT32 setIndex )
 {
     if ( setIndex % 64 == 0 )
     {
@@ -481,7 +504,7 @@ INT32 CACHE_REPLACEMENT_STATE::GetSamplerSetIndex(UINT32 setIndex)
 }
 
 
-bool CACHE_REPLACEMENT_STATE::IsSamplerHit(UINT32 setIndex, UINT32 samplerSetIndex)
+bool CACHE_REPLACEMENT_STATE::IsSamplerHit( UINT32 setIndex, UINT32 samplerSetIndex )
 {
     bool isSampled = false;
     if (samplerSetIndex >= 0)
@@ -497,9 +520,9 @@ bool CACHE_REPLACEMENT_STATE::IsSamplerHit(UINT32 setIndex, UINT32 samplerSetInd
 
 // Get Sampler LRU victim
 
-INT32 CACHE_REPLACEMENT_STATE::GetSamplerLruVictim(UINT32 samplerSetIndex)
+INT32 CACHE_REPLACEMENT_STATE::GetSamplerLruVictim( UINT32 samplerSetIndex )
 {
-    LINE_REPLACEMENT_STATE *replSamplerSet = replSampler[samplerSetIndex];
+    LINE_REPLACEMENT_STATE *replSamplerSet = replSampler[ samplerSetIndex ];
 
     INT32 lruSamplerWay = 0;
 
@@ -534,7 +557,7 @@ INT32 CACHE_REPLACEMENT_STATE::GetSamplerMyVictim( UINT32 samplerSetIndex )
 {
 	// return first way always
 
-    LINE_REPLACEMENT_STATE *replSamplerSet = replSampler[samplerSetIndex];
+    LINE_REPLACEMENT_STATE *replSamplerSet = replSampler[ samplerSetIndex ];
     INT32 mySamplerWay = -1;
     for (UINT32 way=0; way<SAMPLER_ASSOC; way++)
     {
@@ -553,10 +576,10 @@ INT32 CACHE_REPLACEMENT_STATE::GetSamplerMyVictim( UINT32 samplerSetIndex )
 
 // Update sampler LRU replacement
 
-void CACHE_REPLACEMENT_STATE::UpdateSamplerLRU( UINT32 samplerSetIndex, INT32 updateWayID )
+void CACHE_REPLACEMENT_STATE::UpdateSamplerLRU( UINT32 samplerSetIndex, INT32 lruSamplerWay )
 {
 	// Determine current LRU stack position
-    UINT32 currLRUstackposition = replSampler[ samplerSetIndex ][ updateWayID ].LRUstackposition;
+    UINT32 currLRUstackposition = replSampler[ samplerSetIndex ][ lruSamplerWay ].LRUstackposition;
 
 	// Update the stack position of all lines before the current line
 	// Update implies incremeting their stack positions by one
@@ -569,15 +592,16 @@ void CACHE_REPLACEMENT_STATE::UpdateSamplerLRU( UINT32 samplerSetIndex, INT32 up
 	}
 
 	// Set the LRU stack position of new line to be zero
-	replSampler[ samplerSetIndex ][ updateWayID ].LRUstackposition = 0;
+	replSampler[ samplerSetIndex ][ lruSamplerWay ].LRUstackposition = 0;
 }
 
-// Update sampler My policy
 
-void CACHE_REPLACEMENT_STATE::UpdateSamplerMyPolicy(UINT32 setIndex, UINT32 samplerSetIndex, INT32 updateWayID)
+// Update sampler My policy
+/*
+void CACHE_REPLACEMENT_STATE::UpdateSamplerMyPolicy(UINT32 setIndex, UINT32 samplerSetIndex, INT32 mySamplerWay)
 {
 	// Determine the current dead state position????
-
+   
     for (UINT32 way=0; way<SAMPLER_ASSOC; way++)
     {
         if (replSampler[samplerSetIndex][way].dead == true)
@@ -587,11 +611,14 @@ void CACHE_REPLACEMENT_STATE::UpdateSamplerMyPolicy(UINT32 setIndex, UINT32 samp
             break;
         }
     }
-    replSampler[samplerSetIndex][updateWayID].dead = false;
+   
+
+    replSampler[samplerSetIndex][mySamplerWay].dead = false;
     predictorResult(Sampler_PC, PC);
 
 
 }
+*/
 
 
 
@@ -620,7 +647,7 @@ void CACHE_REPLACEMENT_STATE::InitMyPredictor()
 }
 
 
-bool CACHE_REPLACEMENT_STATE::IsDead(Addr_t Sampler_PC)
+bool CACHE_REPLACEMENT_STATE::IsDead( Addr_t Sampler_PC )
 {
     bool dead = false;
     predictorResult(Sampler_PC, PC);
@@ -637,7 +664,7 @@ bool CACHE_REPLACEMENT_STATE::IsDead(Addr_t Sampler_PC)
 }
 
 
-INT32 CACHE_REPLACEMENT_STATE::predictorResult(Addr_t Sampler_PC, Addr_t PC)
+INT32 CACHE_REPLACEMENT_STATE::predictorResult( Addr_t Sampler_PC, Addr_t PC )
 {
     int counterSum = 0;
     Sampler_PC = PC & ((1<<PC_LENGTH)-1);
@@ -663,11 +690,11 @@ INT32 CACHE_REPLACEMENT_STATE::predictorResult(Addr_t Sampler_PC, Addr_t PC)
 // Update predictor
 
 
-void CACHE_REPLACEMENT_STATE::UpdatePredictorDecrease(Addr_t Sampler_PC)
+void CACHE_REPLACEMENT_STATE::UpdatePredictorDecrease( Addr_t Sampler_PC )
 {
 
 }
 
-void CACHE_REPLACEMENT_STATE::CounterIncrease(Addr_t Sampler_PC)
+void CACHE_REPLACEMENT_STATE::CounterIncrease( Addr_t Sampler_PC )
 {
 }
